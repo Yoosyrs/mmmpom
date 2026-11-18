@@ -310,6 +310,26 @@ async function main() {
       JSON.stringify(instructorMe.data?.user?.role)
     );
 
+    const unauthorizedPrice = await student.post('/api/instructor/courses', {
+      title: 'Curso comercial sin autorización',
+      subtitle: 'La plataforma no permite fijar precios sin autorización',
+      description:
+        'Intento de publicar un curso comercial sin autorización administrativa. La plataforma debe rechazarlo para no simular pagos ni precios.',
+      category_slug: 'tecnologia',
+      subcategory_slug: 'desarrollo-web',
+      level: 'principiante',
+      duration_minutes: 30,
+      price_cents: 1900,
+    });
+    check(
+      'no se puede fijar precio sin autorización administrativa',
+      unauthorizedPrice.status === 400 || unauthorizedPrice.status === 403,
+      `status ${unauthorizedPrice.status}`
+    );
+
+    const authorizePrice = await admin.patch(`/api/admin/users/${userId}`, { price_authorized: true });
+    check('el administrador autoriza precios para el instructor', authorizePrice.status === 200, `status ${authorizePrice.status}`);
+
     const created = await student.post('/api/instructor/courses', {
       title: 'Curso de prueba del smoke test',
       subtitle: 'Publicación creada por la verificación automática',
@@ -320,7 +340,7 @@ async function main() {
       level: 'principiante',
       duration_minutes: 45,
       is_premium: false,
-      price_cents: 0,
+      price_cents: 1900,
     });
     const courseId = created.data?.course?.id;
     const courseSlug = created.data?.course?.slug;
@@ -343,7 +363,11 @@ async function main() {
     }
 
     const submitCourse = await student.post(`/api/instructor/courses/${courseId}/submit`);
-    check('el curso pasa a revisión administrativa', submitCourse.status === 200, `status ${submitCourse.status} ${JSON.stringify(submitCourse.data?.error ?? '')}`);
+    check(
+      'un curso comercial pasa a revisión administrativa',
+      submitCourse.status === 200 && submitCourse.data?.status === 'in_review',
+      `status ${submitCourse.status} ${JSON.stringify(submitCourse.data ?? {})}`
+    );
 
     const hidden = await client().get(`/api/courses/${courseSlug}`);
     check('el curso en revisión no es público', hidden.status === 404, `status ${hidden.status}`);
@@ -356,6 +380,20 @@ async function main() {
       'el curso aprobado aparece publicado',
       Boolean(courseSlug) && published.status === 200 && published.data?.course?.status === 'published',
       `status ${published.status}`
+    );
+
+    const buyer = client();
+    const buyerRegister = await buyer.post('/api/auth/register', {
+      name: 'Comprador Smoke',
+      username: `buyer${suffix}`.slice(0, 24),
+      email: `buyer-${suffix}@skillverse.test`,
+      password: PASSWORD,
+    });
+    const paidEnroll = await buyer.post(`/api/courses/${courseSlug}/enroll`);
+    check(
+      'un curso de pago no se inscribe sin cobro real',
+      buyerRegister.status === 201 && paidEnroll.status === 402,
+      `registro ${buyerRegister.status} / inscripción ${paidEnroll.status}`
     );
 
     // 8. Cierre de sesión
