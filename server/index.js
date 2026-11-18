@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { initDb, flush, UPLOAD_DIR } from './db.js';
 import { attachUser } from './auth.js';
 import { HttpError } from './util.js';
-import { seed } from './seed.js';
+import { seedDatabase } from './seed.js';
 import authRoutes from './routes/auth.js';
 import catalogRoutes from './routes/catalog.js';
 import socialRoutes from './routes/social.js';
@@ -129,7 +129,7 @@ let server;
 
 async function main() {
   await initDb();
-  seed();
+  seedDatabase();
   server = app.listen(PORT, '0.0.0.0', () => {
     console.log(`SKILLVERSE escuchando en http://0.0.0.0:${PORT}`);
   });

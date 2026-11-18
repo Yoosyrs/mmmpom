@@ -582,7 +582,7 @@ export function seedDatabase() {
     'Espacio publicitario moderado de ejemplo. En producción solo se muestran anuncios revisados por administración y nunca a cuentas Premium.',
     '',
     'diseno',
-    'active',
+    'approved',
     0,
     0,
     createdAt,
