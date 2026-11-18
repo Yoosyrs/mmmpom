@@ -168,8 +168,9 @@ async function main() {
     // 3. Inscripción, progreso y evaluación
     const beforeEnroll = await student.get(`/api/courses/${target.slug}`);
     check(
-      'las lecciones están bloqueadas antes de inscribirse',
-      beforeEnroll.data?.lessons?.length > 0 && beforeEnroll.data.lessons.every((l) => l.locked === true),
+      'las lecciones quedan bloqueadas antes de inscribirse (la primera es vista previa)',
+      (beforeEnroll.data?.lessons?.length ?? 0) > 1 &&
+        beforeEnroll.data.lessons.slice(1).every((l) => l.locked === true),
       JSON.stringify(beforeEnroll.data?.lessons?.map((l) => l.locked))
     );
 
@@ -218,7 +219,7 @@ async function main() {
     );
     check(
       'la verificación aclara que no es un título académico',
-      typeof verification.data?.disclaimer === 'string' && /no es un t[ií]tulo/i.test(verification.data.disclaimer),
+      typeof verification.data?.disclaimer === 'string' && /no son t[ií]tulos/i.test(verification.data.disclaimer),
       verification.data?.disclaimer
     );
 
@@ -247,7 +248,7 @@ async function main() {
     const report = await student.post('/api/reports', {
       target_type: 'post',
       target_id: postId,
-      reason: 'spam',
+      reason: 'Contenido spam repetido',
       detail: 'Reporte generado por la prueba automática para validar la moderación.',
     });
     check('se puede reportar contenido', report.status === 201 || report.status === 200, `status ${report.status}`);
@@ -257,7 +258,7 @@ async function main() {
       title: 'Proyecto con archivo no permitido',
       description: 'Intento de subida con un tipo de archivo ejecutable para validar el filtro del servidor.',
       category_slug: 'tecnologia',
-      files: [{ filename: 'payload.exe', data_url: 'data:application/x-msdownload;base64,TVqQAAMAAAAEAAAA' }],
+      files: [{ filename: 'payload.exe', dataUrl: 'data:application/x-msdownload;base64,TVqQAAMAAAAEAAAA' }],
     });
     check('se rechaza un archivo con tipo no permitido', badFile.status === 400 || badFile.status === 415, `status ${badFile.status}`);
 
@@ -266,7 +267,7 @@ async function main() {
       description: 'Proyecto publicado por la prueba automática para validar imágenes, enlaces y portafolio.',
       category_slug: 'tecnologia',
       link: 'https://example.com/proyecto-smoke',
-      files: [{ filename: 'captura.png', data_url: PNG_DATA_URL }],
+      files: [{ filename: 'captura.png', dataUrl: PNG_DATA_URL }],
     });
     const projectId = project.data?.project?.id;
     check('se publica un proyecto con imagen', project.status === 201 && Boolean(projectId), `status ${project.status} ${JSON.stringify(project.data?.error ?? '')}`);
@@ -295,8 +296,8 @@ async function main() {
     const pending = await admin.get('/api/admin/overview');
     check(
       'la solicitud aparece en el panel de administración',
-      pending.status === 200 && (pending.data?.stats?.pending_instructors ?? 0) >= 1,
-      JSON.stringify(pending.data?.stats ?? {})
+      pending.status === 200 && (pending.data?.pending_instructors?.length ?? 0) >= 1,
+      JSON.stringify(pending.data?.totals ?? {})
     );
 
     const approveInstructor = await admin.post(`/api/admin/instructors/${userId}/review`, { action: 'approve' });
@@ -322,7 +323,12 @@ async function main() {
       price_cents: 0,
     });
     const courseId = created.data?.course?.id;
-    check('el instructor crea un curso en borrador', created.status === 201 && Boolean(courseId), `status ${created.status} ${JSON.stringify(created.data?.error ?? '')}`);
+    const courseSlug = created.data?.course?.slug;
+    check(
+      'el instructor crea un curso en borrador con su slug',
+      created.status === 201 && Boolean(courseId) && Boolean(courseSlug),
+      `status ${created.status} ${JSON.stringify(created.data?.error ?? '')}`
+    );
 
     for (const [index, title] of ['Lección uno del curso de prueba', 'Lección dos del curso de prueba'].entries()) {
       const lesson = await student.post(`/api/instructor/courses/${courseId}/lessons`, {
@@ -339,14 +345,18 @@ async function main() {
     const submitCourse = await student.post(`/api/instructor/courses/${courseId}/submit`);
     check('el curso pasa a revisión administrativa', submitCourse.status === 200, `status ${submitCourse.status} ${JSON.stringify(submitCourse.data?.error ?? '')}`);
 
-    const hidden = await client().get('/api/courses/curso-de-prueba-del-smoke-test');
+    const hidden = await client().get(`/api/courses/${courseSlug}`);
     check('el curso en revisión no es público', hidden.status === 404, `status ${hidden.status}`);
 
     const approveCourse = await admin.post(`/api/admin/courses/${courseId}/review`, { action: 'approve', note: 'Contenido de prueba verificado.' });
     check('el administrador aprueba y publica el curso', approveCourse.status === 200, `status ${approveCourse.status}`);
 
-    const published = await client().get('/api/courses/curso-de-prueba-del-smoke-test');
-    check('el curso aprobado aparece publicado', published.status === 200 && published.data?.course?.status === 'published', `status ${published.status}`);
+    const published = await client().get(`/api/courses/${courseSlug}`);
+    check(
+      'el curso aprobado aparece publicado',
+      Boolean(courseSlug) && published.status === 200 && published.data?.course?.status === 'published',
+      `status ${published.status}`
+    );
 
     // 8. Cierre de sesión
     const logout = await student.post('/api/auth/logout');
