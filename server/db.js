@@ -34,6 +34,7 @@ CREATE TABLE IF NOT EXISTS users (
   privacy_certificates TEXT NOT NULL DEFAULT 'public',
   suspended INTEGER NOT NULL DEFAULT 0,
   commission_rate INTEGER NOT NULL DEFAULT 20,
+  price_authorized INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
 
@@ -383,8 +384,25 @@ export async function initDb() {
   db = fs.existsSync(DB_FILE) ? new SQL.Database(fs.readFileSync(DB_FILE)) : new SQL.Database();
   db.run('PRAGMA foreign_keys = ON');
   db.run(SCHEMA);
+  migrate();
   flush();
   return db;
+}
+
+function ensureColumn(table, column, definition) {
+  const columns = all(`PRAGMA table_info(${table})`);
+  if (!columns.some((row) => row.name === column)) {
+    db.run(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
+  }
+}
+
+// Small forward-only migrations for databases created by earlier versions.
+function migrate() {
+  ensureColumn('users', 'price_authorized', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('users', 'commission_rate', 'INTEGER NOT NULL DEFAULT 20');
+  ensureColumn('courses', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('posts', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
+  ensureColumn('projects', 'is_demo', 'INTEGER NOT NULL DEFAULT 0');
 }
 
 export function all(sql, params = []) {
